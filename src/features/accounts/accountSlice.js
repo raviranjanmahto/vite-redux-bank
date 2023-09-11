@@ -2,16 +2,22 @@ const initialState = {
   balance: 0,
   loan: 0,
   loanPurpose: "",
+  isLoading: false,
 };
 
 export default function accountReducer(state = initialState, action) {
   switch (action.type) {
     case "account/deposit":
-      return { ...state, balance: state.balance + action.payload };
+      return {
+        ...state,
+        balance: state.balance + action.payload,
+        isLoading: false,
+      };
     case "account/withdraw":
+      if (state.balance < action.payload) return state;
       return { ...state, balance: state.balance - action.payload };
     case "account/requestLoan":
-      if (state.loan > 0) return;
+      if (state.loan > 0) return state;
       return {
         ...state,
         loan: action.payload.amount,
@@ -25,17 +31,33 @@ export default function accountReducer(state = initialState, action) {
         loanPurpose: "",
         balance: state.balance - state.loan,
       };
+    case "account/convertingCurrency":
+      return { ...state, isLoading: true };
     default:
       return state;
   }
 }
 
-export function deposit(amount) {
-  return { type: "account/deposit", payload: amount };
+export function deposit(amount, currency) {
+  if (currency === "USD") return { type: "account/deposit", payload: amount };
+
+  return async function (dispatch) {
+    dispatch({ type: "account/convertingCurrency" });
+    const host = import.meta.env.VITE_CURRENCY_HOST;
+    const res = await fetch(
+      `https://${host}/latest?amount=${amount}&from=${currency}&to=USD`
+    );
+    const data = await res.json();
+    const converted = data.rates.USD;
+
+    dispatch({ type: "account/deposit", payload: converted });
+  };
 }
+
 export function withdraw(amount) {
   return { type: "account/withdraw", payload: amount };
 }
+
 export function requestLoan(amount, purpose) {
   return {
     type: "account/requestLoan",
